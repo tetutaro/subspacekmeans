@@ -376,7 +376,7 @@ class SubspaceKMeans(KMeans):
         return
 
     def fit(self, X, y=None):
-        """Compute k-means clustering.
+        """Compute subspace k-Means clustering.
 
         Parameters
         ----------
@@ -387,7 +387,7 @@ class SubspaceKMeans(KMeans):
 
         """
         if sp.issparse(X):
-            raise ValueError("SubKMeans is not support sparse matrix")
+            raise ValueError("SubspaceKMeans does not support sparse matrix")
         random_state = check_random_state(self.random_state)
         X = self._check_fit_data(X)
 

@@ -6,3 +6,5 @@ Mautz, Dominik, et al. "Towards an Optimal Subspace for K-Means." Proceedings of
 Original implementation of above article.
 
 NOTICE: SubspaceKMeans does not support sparse matrix
+
+INSTALL: `> pip install git+https://github.com/tetutaro/subspacekmeans`

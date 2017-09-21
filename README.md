@@ -1,5 +1,5 @@
-SubKMeans
-=========
+SubspaceKMeans
+==============
 
 Mautz, Dominik, et al. "Towards an Optimal Subspace for K-Means." Proceedings of the 23rd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. ACM, 2017.
 

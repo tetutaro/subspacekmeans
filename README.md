@@ -11,4 +11,4 @@ INSTALL: `> pip install git+https://github.com/tetutaro/subspacekmeans`
 
 ### Usage
 
-[](usage.png)
+![](usage.png)

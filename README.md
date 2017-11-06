@@ -11,6 +11,6 @@ INSTALL: `> pip install git+https://github.com/tetutaro/subspacekmeans`
 
 ### Usage
 
-for more information (and comparing with PCA), see [](usage.ipynb)
+for more information (and comparing with PCA), see [usage.ipynb](usage.ipynb)
 
 ![](usage.png)

@@ -9,6 +9,7 @@ from sklearn.cluster.k_means_ import _validate_center_shape
 from sklearn.cluster.k_means_ import _tolerance
 from sklearn.cluster.k_means_ import _labels_inertia
 from sklearn.cluster.k_means_ import _init_centroids
+from sklearn.cluster.k_means_ import _check_sample_weight
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
 from sklearn.utils.extmath import row_norms, squared_norm
 from sklearn.utils import check_array
@@ -23,6 +24,7 @@ from sklearn.cluster import _k_means
 def subspace_k_means(
     X,
     n_clusters,
+    sample_weight=None,
     init='k-means++',
     n_init=10,
     max_iter=300,
@@ -85,6 +87,7 @@ def subspace_k_means(
             # run a k-means once
             labels, inertia, centers, n_iter_ = subspace_kmeans_single(
                 X,
+                sample_weight,
                 n_clusters,
                 init=init,
                 max_iter=max_iter,
@@ -105,6 +108,7 @@ def subspace_k_means(
         results = Parallel(n_jobs=n_jobs, verbose=0)(
             delayed(subspace_kmeans_single)(
                 X,
+                sample_weight,
                 n_clusters,
                 init=init,
                 max_iter=max_iter,
@@ -136,6 +140,7 @@ def subspace_k_means(
 
 def subspace_kmeans_single(
     X,
+    sample_weight,
     n_clusters,
     init='k-means++',
     max_iter=300,
@@ -146,6 +151,7 @@ def subspace_kmeans_single(
     random_state=None
 ):
     random_state = check_random_state(random_state)
+    sample_weight = _check_sample_weight(X, sample_weight)
 
     best_labels, best_inertia, best_centers = None, None, None
     # init
@@ -202,7 +208,7 @@ def subspace_kmeans_single(
         # === End of original implementation of E-step of EM ===
 
         # computation of the means is also called the M-step of EM
-        centers = _k_means._centers_dense(X, labels, n_clusters, distances)
+        centers = _k_means._centers_dense(X, sample_weight, labels, n_clusters, distances)
 
         # === Beginning of original implementation of M-step of EM ===
 
@@ -375,7 +381,7 @@ class SubspaceKMeans(KMeans):
         self.n_jobs = n_jobs
         return
 
-    def fit(self, X, y=None):
+    def fit(self, X, y=None, sample_weight=None):
         """Compute subspace k-Means clustering.
 
         Parameters
@@ -384,17 +390,21 @@ class SubspaceKMeans(KMeans):
             Training instances to cluster.
 
         y : Ignored
+            not used, present here for API consistency by convention.
 
+        sample_weight : array-like, shape (n_samples,), optional
+            The weights for each observation in X. If None, all observations
+            are assigned equal weight (default: None)
         """
         if sp.issparse(X):
             raise ValueError("SubspaceKMeans does not support sparse matrix")
         random_state = check_random_state(self.random_state)
-        X = self._check_fit_data(X)
 
         self.cluster_centers_, self.labels_, self.inertia_, self.n_iter_ = \
             subspace_k_means(
                 X,
                 n_clusters=self.n_clusters,
+                sample_weight=sample_weight,
                 init=self.init,
                 n_init=self.n_init,
                 max_iter=self.max_iter,

@@ -256,7 +256,7 @@ def subspace_kmeans_single(
         # rerun E-step in case of non-convergence so that predicted labels
         # match cluster centers
         best_labels, best_inertia = \
-            _labels_inertia(X, x_squared_norms, best_centers,
+            _labels_inertia(X, sample_weight,x_squared_norms, best_centers,
                             precompute_distances=False,
                             distances=distances)
 

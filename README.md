@@ -5,12 +5,32 @@ Mautz, Dominik, et al. "Towards an Optimal Subspace for K-Means." Proceedings of
 
 Original implementation of above article.
 
-NOTICE: SubspaceKMeans does not support sparse matrix
+This package provides `SubspaceKMeans` class which implements the above algorithm and act like the `KMeans` of scikit-learn (sklearn.cluster.KMeans).
 
-INSTALL: `> pip install git+https://github.com/tetutaro/subspacekmeans`
+## Install
 
-### Usage
+`> pip install "git+https://github.com/tetutaro/subspacekmeans"`
 
-for more information (and comparing with PCA), see [usage.ipynb](usage.ipynb)
+## Very simple usage
 
-![](usage.png)
+```
+from subspacekmeans import SubspaceKMeans
+
+subspace_km = SubspaceKMeans(n_clusters=8)
+predicted = subspace_km.fit_predict(data)
+transformed = subspace_km.transform(data)
+```
+
+## Notices
+
+- the `subspacekmeans` package is now based on `scikit-learn==0.24.1`
+- the `SubspaceKMeans` class does not support sparse matrix as input data
+
+## Detailed usage
+
+see [usage.ipynb](usage.ipynb)
+
+## Sample
+
+![](cluster_space.png)
+![](noise_space.png)

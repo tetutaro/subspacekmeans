@@ -2,9 +2,9 @@
 # -*- coding:utf-8 -*-
 from .subspace_k_means import SubspaceKMeans
 
-__version__ = '0.0.3'
+__version__ = '0.1.3'
 description_ = 'subspace k-Means'
 url_ = 'https://github.com/tetutaro/subspacekmeans'
-author_ = 'maruyama'
+author_ = 'tetutaro'
 
 __all__ = ['SubspaceKMeans']

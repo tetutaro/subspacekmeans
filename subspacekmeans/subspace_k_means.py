@@ -61,10 +61,7 @@ def subspace_kmeans_single(
     upper_bounds = np.zeros(n_samples, dtype=X.dtype)
     lower_bounds = np.zeros((n_samples, n_clusters), dtype=X.dtype)
     center_shift = np.zeros(n_clusters, dtype=X.dtype)
-    init_bounds = init_bounds_dense
-    elkan_iter = elkan_iter_chunked_dense
-    _inertia = _inertia_dense
-    init_bounds(
+    init_bounds_dense(
         X, centers, center_half_distances,
         labels, upper_bounds, lower_bounds
     )
@@ -83,7 +80,7 @@ def subspace_kmeans_single(
     P_C = np.eye(m, M=d).T
     # === end: original implementation of init values ===
     for i in range(max_iter):
-        elkan_iter(
+        elkan_iter_chunked_dense(
             X, sample_weight, centers, centers_new,
             weight_in_clusters, center_half_distances,
             distance_next_center, upper_bounds, lower_bounds,
@@ -96,7 +93,7 @@ def subspace_kmeans_single(
             np.asarray(center_half_distances), kth=1, axis=0
         )[1]
         if verbose:
-            inertia = _inertia(X, sample_weight, centers, labels)
+            inertia = _inertia_dense(X, sample_weight, centers, labels)
             print(f"Iteration {i}, inertia {inertia}")
         centers, centers_new = centers_new, centers
         # === begin: original implementation for updating labels ===
@@ -134,8 +131,7 @@ def subspace_kmeans_single(
             S += np.dot(X_i.T, X_i)
         Sigma = S - S_D
         evals, evecs = np.linalg.eigh(Sigma)
-        idx = np.argsort(evals)[::1]
-        V = evecs[:, idx]
+        V = evecs[:, np.argsort(evals)]
         m = len(np.where(evals < tol_eig)[0])
         if m == 0:
             raise ValueError(
@@ -146,13 +142,13 @@ def subspace_kmeans_single(
         # === end: original implementation of updating values ===
     if not strict_convergence:
         # rerun E-step so that predicted labels match cluster centers
-        elkan_iter(
+        elkan_iter_chunked_dense(
             X, sample_weight, centers, centers,
             weight_in_clusters, center_half_distances,
             distance_next_center, upper_bounds, lower_bounds,
             labels, center_shift, n_threads, update_centers=False
         )
-    inertia = _inertia(X, sample_weight, centers, labels)
+    inertia = _inertia_dense(X, sample_weight, centers, labels)
     return labels, inertia, centers, i + 1
 
 
@@ -312,12 +308,11 @@ class SubspaceKMeans(KMeans):
             X_i = X[:][self.labels_ == i] - self.cluster_centers_[:][i]
             S += np.dot(X_i.T, X_i)
         Sigma = S - S_D
-        feature_importances, self.V_ = np.linalg.eigh(Sigma)
-        self.m_ = len(np.where(
-            feature_importances < self.tol_eig
-        )[0])
+        evals, evecs = np.linalg.eigh(Sigma)
+        self.V_ = evecs[:, np.argsort(evals)]
+        self.m_ = len(np.where(evals < self.tol_eig)[0])
         self.feature_importances_ = np.dot(
-            feature_importances,
+            np.sort(evals),
             np.linalg.inv(self.V_)
         )
         # === end: original implementation for additional attributes ===

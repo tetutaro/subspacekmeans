@@ -7,6 +7,12 @@ Original implementation of above article.
 
 This package provides `SubspaceKMeans` class which implements the above algorithm and act like the `KMeans` of scikit-learn (sklearn.cluster.KMeans).
 
+## articles corresponding this repository (Qiita)
+
+following articles were written in Japanese only.
+
+- [Subspace k-Meansについて語りたい](https://qiita.com/tetutaro/items/333b761e5bf8685794ef)
+
 ## Install
 
 `> pip install "git+https://github.com/tetutaro/subspacekmeans"`

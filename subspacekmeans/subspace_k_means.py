@@ -3,17 +3,14 @@
 """Subspace k-Means clustering"""
 import warnings
 import numpy as np
-import scipy.sparse as sp
 from sklearn.cluster import KMeans
 from sklearn.cluster._k_means_fast import _inertia_dense
-from sklearn.cluster._k_means_elkan import init_bounds_dense
-from sklearn.cluster._k_means_elkan import elkan_iter_chunked_dense
-from sklearn.metrics.pairwise import euclidean_distances
 from sklearn.metrics.pairwise import pairwise_distances_argmin_min
 from sklearn.utils import check_random_state
 from sklearn.utils import check_array
 from sklearn.utils.extmath import row_norms
 from sklearn.utils.validation import _check_sample_weight
+from sklearn.utils.validation import check_is_fitted
 from sklearn.exceptions import ConvergenceWarning
 
 
@@ -23,11 +20,9 @@ def subspace_kmeans_single(
     centers_init,
     random_state,
     max_iter=300,
-    verbose=False,
-    x_squared_norms=None,
     tol=1e-4,
-    n_threads=1,
-    tol_eig=-1e-10
+    tol_eig=-1e-10,
+    verbose=False
 ):
     """A single run of Subspace k-Means
 
@@ -48,55 +43,32 @@ def subspace_kmeans_single(
     """
     n_samples = X.shape[0]
     n_clusters = centers_init.shape[0]
+
     # Buffers to avoid new allocations at each iteration.
     centers = centers_init
     centers_new = np.zeros_like(centers)
-    weight_in_clusters = np.zeros(n_clusters, dtype=X.dtype)
     labels = np.full(n_samples, -1, dtype=np.int32)
     labels_old = labels.copy()
-    center_half_distances = euclidean_distances(centers) / 2
-    distance_next_center = np.partition(
-        np.asarray(center_half_distances), kth=1, axis=0
-    )[1]
-    upper_bounds = np.zeros(n_samples, dtype=X.dtype)
-    lower_bounds = np.zeros((n_samples, n_clusters), dtype=X.dtype)
-    center_shift = np.zeros(n_clusters, dtype=X.dtype)
-    init_bounds_dense(
-        X, centers, center_half_distances,
-        labels, upper_bounds, lower_bounds
-    )
-    strict_convergence = False
-    # === begin: original implementation of init values ===
-    # Dimensionality of original space
+
+    # internal variables for subspace k-means
+    # Dimension of original space
     d = X.shape[1]
     # Set initial V as QR-decomposed Q of random matrix
-    rand_vals = random_state.random_sample(d ** 2).reshape(d, d)
-    V, _ = np.linalg.qr(rand_vals, mode='complete')
+    V, _ = np.linalg.qr(
+        random_state.random_sample(d ** 2).reshape(d, d),
+        mode='complete'
+    )
     # Set initial m as d/2
     m = d // 2
+    if m == 0:
+        m = 1
     # Scatter matrix of the dataset in the original space
     S_D = np.dot(X.T, X)
     # Projection onto the first m attributes
     P_C = np.eye(m, M=d).T
-    # === end: original implementation of init values ===
+
     for i in range(max_iter):
-        elkan_iter_chunked_dense(
-            X, sample_weight, centers, centers_new,
-            weight_in_clusters, center_half_distances,
-            distance_next_center, upper_bounds, lower_bounds,
-            labels, center_shift, n_threads
-        )
-        # compute new pairwise distances between centers and closest other
-        # center of each center for next iterations
-        center_half_distances = euclidean_distances(centers_new) / 2
-        distance_next_center = np.partition(
-            np.asarray(center_half_distances), kth=1, axis=0
-        )[1]
-        if verbose:
-            inertia = _inertia_dense(X, sample_weight, centers, labels)
-            print(f"Iteration {i}, inertia {inertia}")
-        centers, centers_new = centers_new, centers
-        # === begin: original implementation for updating labels ===
+        # E-step: update labels
         X_C = np.dot(np.dot(X, V), P_C)
         mu_C = np.dot(np.dot(centers, V), P_C)
         labels, _ = pairwise_distances_argmin_min(
@@ -106,29 +78,19 @@ def subspace_kmeans_single(
             metric_kwargs={'squared': True}
         )
         labels = labels.astype(np.int32)
-        # === end: original implementation for updating labels ===
-        if np.array_equal(labels, labels_old):
-            # First check the labels for strict convergence.
-            if verbose:
-                print(f"Converged at iteration {i}: strict convergence.")
-            strict_convergence = True
-            break
-        else:
-            # No strict convergence, check for tol based convergence.
-            center_shift_tot = (center_shift ** 2).sum()
-            if center_shift_tot <= tol:
-                if verbose:
-                    print(
-                        f"Converged at iteration {i}: center shift "
-                        f"{center_shift_tot} within tolerance {tol}."
-                    )
-                break
-        labels_old[:] = labels
-        # === begin: original implementation of updating values ===
+        # M-step: update centers
+        centers_new = np.stack([
+            X[labels == c, :].mean(axis=0) for c in range(n_clusters)
+        ])
+        centers, centers_new = centers_new, centers
+        if verbose:
+            inertia = _inertia_dense(X, sample_weight, centers, labels)
+            print(f"Iteration {i}, inertia {inertia}")
+        # update internal variables for subspace k-means
         S = np.zeros((d, d))
-        for i in range(n_clusters):
-            X_i = X[:][labels == i] - centers[:][i]
-            S += np.dot(X_i.T, X_i)
+        for c in range(n_clusters):
+            X_c = X[labels == c, :] - centers[c, :]
+            S += np.dot(X_c.T, X_c)
         Sigma = S - S_D
         evals, evecs = np.linalg.eigh(Sigma)
         V = evecs[:, np.argsort(evals)]
@@ -139,17 +101,34 @@ def subspace_kmeans_single(
                 'The dataset is better explained by a single cluster.'
             )
         P_C = np.eye(m, M=d).T
-        # === end: original implementation of updating values ===
-    if not strict_convergence:
-        # rerun E-step so that predicted labels match cluster centers
-        elkan_iter_chunked_dense(
-            X, sample_weight, centers, centers,
-            weight_in_clusters, center_half_distances,
-            distance_next_center, upper_bounds, lower_bounds,
-            labels, center_shift, n_threads, update_centers=False
-        )
+        # check convergence
+        if np.array_equal(labels, labels_old):
+            # First check the labels for strict convergence.
+            if verbose:
+                print(f"Converged at iteration {i}: strict convergence.")
+            break
+        else:
+            # No strict convergence, check for tol based convergence.
+            center_shift_tot = ((centers - centers_new) ** 2).sum()
+            if center_shift_tot <= tol:
+                if verbose:
+                    print(
+                        f"Converged at iteration {i}: center shift "
+                        f"{center_shift_tot} within tolerance {tol}."
+                    )
+                break
+        labels_old[:] = labels
+
     inertia = _inertia_dense(X, sample_weight, centers, labels)
-    return labels, inertia, centers, i + 1
+    ret = {
+        'labels': labels,
+        'inertia': inertia,
+        'centers': centers,
+        'n_iter': i + 1,
+        'cluster_dims': m,
+        'V': V,
+    }
+    return ret
 
 
 class SubspaceKMeans(KMeans):
@@ -173,17 +152,11 @@ class SubspaceKMeans(KMeans):
 
     Attributes
     ----------
-    m_ : integer
-        Dimensionality of the clusterd space
+    cluster_dims_ : integer
+        number of dimension of the clusterd space
 
     V_ : float ndarray with shape (n_features, n_features)
         The orthonormal matrix of a rigid transformation
-
-    feature_importances_ : array of shape = [n_features]
-        The transformed feature importances
-        (the smaller, the more important the feature)
-        (negative value (< tol_eig): feature of clustered space)
-        (positive value (>= tol_eig): feature fo noise space).
     """
     def __init__(
         self,
@@ -235,10 +208,11 @@ class SubspaceKMeans(KMeans):
         -------
         self
         """
-        if sp.issparse(X):
-            raise ValueError(
-                "SubspaceKMeans does not support sparse matrix"
-            )
+        X = self._validate_data(
+            X, dtype=[np.float64, np.float32],
+            accept_sparse=False, accept_large_sparse=False,
+            order='C', copy=self.copy_x
+        )
         self._check_params(X)
         random_state = check_random_state(self.random_state)
         sample_weight = _check_sample_weight(
@@ -268,23 +242,24 @@ class SubspaceKMeans(KMeans):
             if self.verbose:
                 print("Initialization complete")
             # === call function for subspace k-Means ===
-            labels, inertia, centers, n_iter_ = subspace_kmeans_single(
+            ret = subspace_kmeans_single(
                 X=X,
                 sample_weight=sample_weight,
                 centers_init=centers_init,
                 random_state=random_state,
                 max_iter=self.max_iter,
-                verbose=self.verbose,
                 tol=self.tol,
-                x_squared_norms=x_squared_norms,
-                n_threads=self._n_threads,
-                tol_eig=self.tol_eig
+                tol_eig=self.tol_eig,
+                verbose=self.verbose
             )
+            inertia = ret['inertia']
             if best_inertia is None or inertia < best_inertia:
-                best_labels = labels
-                best_centers = centers
+                best_labels = ret['labels']
+                best_centers = ret['centers']
                 best_inertia = inertia
-                best_n_iter = n_iter_
+                best_n_iter = ret['n_iter']
+                best_cluster_dims = ret['cluster_dims']
+                best_V = ret['V']
         if not self.copy_x:
             X += X_mean
         best_centers += X_mean
@@ -300,23 +275,47 @@ class SubspaceKMeans(KMeans):
         self.labels_ = best_labels
         self.inertia_ = best_inertia
         self.n_iter_ = best_n_iter
-        # === begin: original implementation for additional attributes ===
-        d = X.shape[1]
-        S_D = np.dot(X.T, X)
-        S = np.zeros((d, d))
-        for i in range(self.n_clusters):
-            X_i = X[:][self.labels_ == i] - self.cluster_centers_[:][i]
-            S += np.dot(X_i.T, X_i)
-        Sigma = S - S_D
-        evals, evecs = np.linalg.eigh(Sigma)
-        self.V_ = evecs[:, np.argsort(evals)]
-        self.m_ = len(np.where(evals < self.tol_eig)[0])
-        self.feature_importances_ = np.dot(
-            np.sort(evals),
-            np.linalg.inv(self.V_)
-        )
-        # === end: original implementation for additional attributes ===
+        self.cluster_dims_ = best_cluster_dims
+        self.V_ = best_V
         return self
 
     def _transform(self, X):
         return np.dot(X, self.V_)
+
+    def predict(self, X, sample_weight=None):
+        check_is_fitted(self)
+        X = self._check_test_data(X)
+        d = X.shape[1]
+        P_C = np.eye(self.cluster_dims_, M=d).T
+        X_C = np.dot(np.dot(X, self.V_), P_C)
+        mu_C = np.dot(np.dot(self.cluster_centers_, self.V_), P_C)
+        labels, _ = pairwise_distances_argmin_min(
+            X=X_C,
+            Y=mu_C,
+            metric='euclidean',
+            metric_kwargs={'squared': True}
+        )
+        labels = labels.astype(np.int32)
+        return labels
+
+    def score(self, X, y=None, sample_weight=None):
+        check_is_fitted(self)
+        X = self._check_test_data(X)
+        sample_weight = _check_sample_weight(
+            sample_weight, X, dtype=X.dtype
+        )
+        d = X.shape[1]
+        P_C = np.eye(self.cluster_dims_, M=d).T
+        X_C = np.dot(np.dot(X, self.V_), P_C)
+        mu_C = np.dot(np.dot(self.cluster_centers_, self.V_), P_C)
+        labels, _ = pairwise_distances_argmin_min(
+            X=X_C,
+            Y=mu_C,
+            metric='euclidean',
+            metric_kwargs={'squared': True}
+        )
+        labels = labels.astype(np.int32)
+        inertia = _inertia_dense(
+            X, sample_weight, self.cluster_centers_, labels
+        )
+        return -inertia

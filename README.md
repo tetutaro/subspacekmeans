@@ -23,14 +23,16 @@ transformed = subspace_km.transform(data)
 
 ## Notices
 
-- the `subspacekmeans` package is now based on `scikit-learn==0.24.1`
-- the `SubspaceKMeans` class does not support sparse matrix as input data
-- the `subspaceKMeans` class supports only `elkan` algorithm
-    - It was just a hassle to support both (`elkan` and `lloyd`) algorithms. I think it is no problem to support `lloyd` algorithm.
+- This implementation is now based on `scikit-learn==0.24.1`
+- This implementation does not support sparse matrix as input data
+- This implementation does not use either Cython nor algorithms which adopted by scikit-learn (`lloyd` and `elkan`)
+    - just use numpy
+    - easy to understand but slow
 
 ## Detailed usage
 
-see [usage.ipynb](usage.ipynb)
+- comparing Subspace k-Means with PCA + k-Means. see [wine.ipynb](ipynb/wine.ipynb)
+- finding the best $k$ of (Subspace) $k$-Means. see [pendigits.ipynb](ipynb/pendigits.ipynb)
 
 ## Sample
 
